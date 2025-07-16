@@ -26,5 +26,40 @@ echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stab
 log "\"apt-get update\""
 sudo apt-get update
 
-log "Installing Grafana"
+log "Installing Grafana..."
 sudo apt-get install grafana
+
+log "Reloading daemon.."
+sudo systemctl daemon-reload
+log "Starting grafana server..."
+sudo systemctl start grafana-server
+sudo systemctl status grafana-server
+
+log "Enabling start on boot"
+sudo systemctl status grafana-server
+
+log "Creating systemd override to allow Grafana to bind to privileged ports (<1024)..."
+
+# Path to the override directory and file
+OVERRIDE_DIR="/etc/systemd/system/grafana-server.service.d"
+OVERRIDE_FILE="${OVERRIDE_DIR}/override.conf"
+
+# Create directory if it doesn't exist
+sudo mkdir -p "$OVERRIDE_DIR"
+
+# Write override configuration
+sudo tee "$OVERRIDE_FILE" > /dev/null <<EOF
+[Service]
+# Give the CAP_NET_BIND_SERVICE capability
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+PrivateUsers=false
+EOF
+
+#log Reloading systemd daemon...
+#sudo systemctl daemon-reexec
+#sudo systemctl daemon-reload
+
+log "Restarting grafana-server service..."
+sudo systemctl restart grafana-server
+success "Grafana is now allowed to bind to ports less than 1024"

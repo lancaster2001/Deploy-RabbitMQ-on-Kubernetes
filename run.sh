@@ -21,5 +21,5 @@ script_path=$(dirname "$0")
 log "Setting up build"
 ./${script_path}/initial-setup.sh
 
-log "Building the monitor ddashboard"
-./${script_path}/monitoring-build.sh
+log "Building the monitor dashboard"
+./${script_path}/build-monitoring.sh
