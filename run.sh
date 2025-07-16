@@ -5,7 +5,7 @@ YELLOW="\e[33m"
 GREEN="\e[32m"
 RED="\e[31m"
 NC="\e[0m"
-log() {source ${script-path}/initial-setup.sh
+log() {
     echo -e "${YELLOW}[LOG]${NC} $1"
 }
 success() {
@@ -16,10 +16,10 @@ error() {
 }
 
 #get path to this script
-script-path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+script_path=$(dirname "$0")
 
 log "Setting up build"
-source ${script-path}/initial-setup.sh
+./${script_path}/initial-setup.sh
 
 log "Building the monitor ddashboard"
-source ${script-path}/monitoring-build.sh
+source ${script_path}/monitoring-build.sh
