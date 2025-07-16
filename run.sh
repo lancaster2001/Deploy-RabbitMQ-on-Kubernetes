@@ -22,4 +22,4 @@ log "Setting up build"
 ./${script_path}/initial-setup.sh
 
 log "Building the monitor ddashboard"
-source ${script_path}/monitoring-build.sh
+./${script_path}/monitoring-build.sh

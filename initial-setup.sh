@@ -17,14 +17,14 @@ error() {
 
 wait_for_pods_ready() {
   NAMESPACE=$1
-  echo "[LOG] Waiting for all pods in namespace '$NAMESPACE' to be ready..."
+  log "Waiting for all pods in namespace '$NAMESPACE' to be ready..."
 
   while true; do
     NOT_READY=$(kubectl get pods -n "$NAMESPACE" --no-headers | awk '{print $2}' | grep -v "1/1" | wc -l)
     TOTAL=$(kubectl get pods -n "$NAMESPACE" --no-headers | wc -l)
 
     if [ "$NOT_READY" -eq 0 ] && [ "$TOTAL" -gt 0 ]; then
-      echo "[LOG] All pods are ready!"
+      log "All pods are ready!"
       break
     fi
 
@@ -55,8 +55,13 @@ curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-
 sudo install minikube-linux-amd64 /usr/local/bin/minikube
 rm minikube-linux-amd64
 
-log "Starting Minikube..."
-minikube start --driver=docker
+# Start Minikube only if it's not running
+if ! minikube status | grep -q "host: Running"; then
+  log "Starting Minikube..."
+  minikube start --driver=docker
+else
+  log "Minikube is already running. Skipping start."
+fi
 
 log "Waiting for Kubernetes to be ready..."
 until kubectl get nodes &> /dev/null; do
@@ -93,34 +98,73 @@ else
   sudo usermod -aG docker $USER
 fi
 
-helm upgrade --install rabbitmq-operator bitnami/rabbitmq-cluster-operator --namespace rabbitmq-system
+# Install or upgrade RabbitMQ Operator only if it's not already installed
+if ! helm list -n rabbitmq-system | grep -q rabbitmq-operator; then
+  log "Installing RabbitMQ Operator..."
+  helm upgrade --install rabbitmq-operator bitnami/rabbitmq-cluster-operator --namespace rabbitmq-system --create-namespace
+else
+  log "RabbitMQ Operator already installed. Skipping."
+fi
 
-log "Installing Cert Manager"
-kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.3.1/cert-manager.yaml
+# Install Cert Manager only if cert-manager namespace does not exist
+if ! kubectl get ns cert-manager &>/dev/null; then
+  log "Installing Cert Manager..."
+  kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.3.1/cert-manager.yaml
+else
+  log "Cert Manager already installed. Skipping."
+fi
 
-log "Waiting for cert-manager webhook to be ready..."
-kubectl -n cert-manager rollout status deployment cert-manager-webhook --timeout=120s
+# Wait for cert-manager-webhook to be ready (only if not ready)
+if ! kubectl -n cert-manager get deployment cert-manager-webhook &>/dev/null || \
+   ! kubectl -n cert-manager rollout status deployment cert-manager-webhook --timeout=5s; then
+  log "Waiting for cert-manager webhook to be ready..."
+  kubectl -n cert-manager rollout status deployment cert-manager-webhook --timeout=120s
+else
+  log "cert-manager-webhook is already ready. Skipping wait."
+fi
 
-log "Installing RabbitMQ Messaging Topology Operator"
-kubectl apply -f https://github.com/rabbitmq/messaging-topology-operator/releases/latest/download/messaging-topology-operator-with-certmanager.yaml
+# Install RabbitMQ Messaging Topology Operator only if CRDs are not present
+log "Checking if Messaging Topology Operator is installed..."
+if ! kubectl -n rabbitmq-system get deployment messaging-topology-operator &>/dev/null; then
+  log "Installing RabbitMQ Messaging Topology Operator..."
+  kubectl apply -f https://github.com/rabbitmq/messaging-topology-operator/releases/latest/download/messaging-topology-operator-with-certmanager.yaml
+  log "Waiting for Messaging Topology Operator to become ready..."
+kubectl -n rabbitmq-system rollout status deployment messaging-topology-operator --timeout=60s
+else
+  log "Messaging Topology Operator already installed. Skipping."
+fi
+
 
 success "Installation complete!"
 
+log "Displaying pods in rabbitmq-system for convenience"
 kubectl get pods -n rabbitmq-system
-
-log "Applying RabbitMQ cluster configuration..."
-kubectl apply -f rabbitmq-cluster.yaml
-
+log "Displaying rabbitmq cluster for convenience"
 kubectl get rabbitmqclusters -n rabbitmq-system
-log "Waiting for pods to be ready..."
-
 # Wait for RabbitMQ pods to be fully running
 wait_for_pods_ready rabbitmq-system
 
-log "forwarding ports for rabbitmq-system"
-kubectl port-forward svc/rabbitmq-ha -n rabbitmq-system 15672:15672
 
-sleep 5
+log "Checking if RabbitMQ messaging topology already exists..."
+error "The current method of checking if the topology is running does not work and and is pending a better solution"
+USER_EXISTS=$(kubectl get users.rabbitmq.com -n rabbitmq-system -l app=rabbitmq-topology --no-headers | wc -l)
+PERMISSION_EXISTS=$(kubectl get permissions.rabbitmq.com -n rabbitmq-system -l app=rabbitmq-topology --no-headers | wc -l)
+QUEUE_EXISTS=$(kubectl get queues.rabbitmq.com -n rabbitmq-system -l app=rabbitmq-topology --no-headers | wc -l)
+
+if [ "$USER_EXISTS" -gt 0 ] && [ "$PERMISSION_EXISTS" -gt 0 ] && [ "$QUEUE_EXISTS" -gt 0 ]; then
+  log "All RabbitMQ messaging topology resources exist. Skipping setup."
+else
+  log "Applying RabbitMQ messaging topology"
+  kubectl apply -f rabbitmq-topology.yaml
+
+  log "Ensuring no previous RabbitMQ port-forward is running..."
+  pkill -f "kubectl port-forward svc/rabbitmq-ha" || true
+
+  log "Starting port-forward for RabbitMQ management UI..."
+  kubectl port-forward svc/rabbitmq-ha -n rabbitmq-system 15672:15672 &
+
+  sleep 5
+fi
 
 log "Fetching RabbitMQ UI credentials:"
 echo "Username:"
