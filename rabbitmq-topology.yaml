@@ -1,0 +1,50 @@
+apiVersion: rabbitmq.com/v1beta1
+#  name: app-user
+#  namespace: rabbitmq-system
+#spec:
+#  rabbitmqClusterReference:
+#    name: rabbitmq-ha
+#  username: app-user
+#  password:
+#    valueFrom:
+#      secretKeyRef:
+#        name: rabbitmq-ha-default-user
+#        key: password
+#
+apiVersion: rabbitmq.com/v1beta1
+kind: User
+metadata:
+  name: app-user
+  namespace: rabbitmq-system
+spec:
+  tags:
+  - policymaker
+  - administrator # other available tags are 'management' and 'administrator'
+  rabbitmqClusterReference:
+    name: rabbitmq-ha
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: Permission
+metadata:
+  name: rabbit-user-1-permission
+  namespace: rabbitmq-system
+spec:
+  vhost: "/"
+  user: "app-user" # name of the RabbitMQ user
+  permissions:
+    write: ".*"
+    configure: ".*"
+    read: ".*"
+  rabbitmqClusterReference:
+    name: rabbitmq-ha
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: Queue
+metadata:
+  name: app-queue # name of this custom resource; does not have to the same as the actual queue name
+  namespace: rabbitmq-system
+spec:
+  name: app-queue # name of the queue
+  rabbitmqClusterReference:
+    name: rabbitmq-ha
+    namespace: rabbitmq-service

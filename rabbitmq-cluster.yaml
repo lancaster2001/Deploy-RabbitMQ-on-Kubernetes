@@ -1,0 +1,25 @@
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: rabbitmq-ha
+  namespace: rabbitmq-system
+spec:
+  replicas: 3
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  persistence:
+    storageClassName: standard
+    storage: 1Gi
+  service:
+    type: ClusterIP
+  rabbitmq:
+    additionalConfig: |
+      cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
+      cluster_partition_handling = autoheal
+      queue_master_locator = min-masters
+  image: rabbitmq:3.12.0-management
